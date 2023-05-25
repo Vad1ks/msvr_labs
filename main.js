@@ -170,7 +170,7 @@ function draw() {
     readValues();
 
     /* Multiply the projection matrix times the modelview matrix to give the
-       combined transformation matrix, and send that to the shader program. */
+      combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
     let modelViewMat;
     let projectionMat;
@@ -196,7 +196,7 @@ function draw() {
     bg_surface.Draw();
     gl.clear(gl.DEPTH_BUFFER_BIT);
     let matAccumRed = m4.multiply(applyRedMat(), matAccum1);
-    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(applyRedMat(), matAccum1));
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(m4.multiply(applyRedMat(), matAccum1), getRotationMatrix()));
 
     gl.uniformMatrix4fv(shProgram.iProjectionMatrix, false, projection);
     gl.colorMask(true, false, false, false);
@@ -204,7 +204,7 @@ function draw() {
     surface.Draw();
     gl.clear(gl.DEPTH_BUFFER_BIT);
     let matAccumBlue = m4.multiply(applyBlueMat(), matAccum1);
-    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(applyBlueMat(), matAccum1));
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(m4.multiply(applyBlueMat(), matAccum1), getRotationMatrix()));
     gl.colorMask(false, true, true, false);
     surface.Draw();
     gl.colorMask(true, true, true, true);
@@ -507,3 +507,51 @@ function CreateWebCamTexture() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return textureID;
 }
+
+let sensorFusion = {
+  x: 0,
+  y: 0,
+  z: 0
+}
+window.addEventListener('deviceorientation', e => {
+  sensorFusion.z = -e.alpha / 180 * Math.PI;
+  sensorFusion.x = -e.beta / 180 * Math.PI;
+  sensorFusion.y = -e.gamma / 180 * Math.PI;
+}, true);
+
+function getRotationMatrix() {
+  var _x = sensorFusion.x;
+  var _y = sensorFusion.y;
+  var _z = sensorFusion.z;
+
+  var cX = Math.cos(_x);
+  var cY = Math.cos(_y);
+  var cZ = Math.cos(_z);
+  var sX = Math.sin(_x);
+  var sY = Math.sin(_y);
+  var sZ = Math.sin(_z);
+
+  //
+  // ZXY rotation matrix construction.
+  //
+
+  var m11 = cZ * cY - sZ * sX * sY;
+  var m12 = - cX * sZ;
+  var m13 = cY * sZ * sX + cZ * sY;
+
+  var m21 = cY * sZ + cZ * sX * sY;
+  var m22 = cZ * cX;
+  var m23 = sZ * sY - cZ * cY * sX;
+
+  var m31 = - cX * sY;
+  var m32 = sX;
+  var m33 = cX * cY;
+
+  return [
+    m11, m12, m13, 0,
+    m21, m22, m23, 0,
+    m31, m32, m33, 0,
+    0, 0, 0, 1
+  ];
+
+};
