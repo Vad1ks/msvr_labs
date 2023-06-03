@@ -10,6 +10,7 @@ let step = 20;
 let radius = 5;
 let userRotAngle;
 let bg_surface;
+let sound_surface;
 let video;
 let track;
 let origTex;
@@ -65,20 +66,37 @@ function Model(name) {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
 
     }
+    this.DrawSound = function () {
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, this.count);
+
+    }
 }
 
-function CreateSphereSurface(r = 0.1) {
+function CreateSphereSurface(r) {
     let vertexList = [];
     let lon = -Math.PI;
     let lat = -Math.PI * 0.5;
+    const STEP = 0.1;
     while (lon < Math.PI) {
         while (lat < Math.PI * 0.5) {
             let v1 = sphereSurfaceDate(r, lon, lat);
+            let v2 = sphereSurfaceDate(r, lon + STEP, lat);
+            let v3 = sphereSurfaceDate(r, lon, lat + STEP);
+            let v4 = sphereSurfaceDate(r, lon + STEP, lat + STEP);
             vertexList.push(v1.x, v1.y, v1.z);
-            lat += 0.05;
+            vertexList.push(v2.x, v2.y, v2.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            vertexList.push(v3.x, v3.y, v3.z);
+            vertexList.push(v4.x, v4.y, v4.z);
+            vertexList.push(v2.x, v2.y, v2.z);
+            lat += STEP;
         }
         lat = -Math.PI * 0.5
-        lon += 0.05;
+        lon += STEP;
     }
     return vertexList;
 }
@@ -152,7 +170,8 @@ function draw() {
     let projection = m4.perspective(Math.PI / 8, 1, 8, 1000);
 
     /* Get the view matrix from the SimpleRotator object.*/
-    let modelView = spaceball.getViewMatrix();
+    // let modelView = spaceball.getViewMatrix();
+    let modelView = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     let initialView = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
@@ -170,7 +189,7 @@ function draw() {
     readValues();
 
     /* Multiply the projection matrix times the modelview matrix to give the
-      combined transformation matrix, and send that to the shader program. */
+       combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
     let modelViewMat;
     let projectionMat;
@@ -195,8 +214,17 @@ function draw() {
     );
     bg_surface.Draw();
     gl.clear(gl.DEPTH_BUFFER_BIT);
+    let rotate = vectorFromAngles(sensorFusion.x, sensorFusion.y, sensorFusion.z);
+    let multiplier = 1.25
+    let translateSphere = m4.translation(rotate[0] * multiplier, rotate[1] * multiplier, rotate[2] * multiplier)
+    if (manipulator) {
+        manipulator.setPosition(rotate[0] * multiplier, rotate[1] * multiplier, rotate[2] * multiplier);
+    }
+    // console.log(rotate)
+    // let translateSphere = m4.translation(0, 0, 0)
     let matAccumRed = m4.multiply(applyRedMat(), matAccum1);
-    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(m4.multiply(applyRedMat(), matAccum1), getRotationMatrix()));
+    let matBeforeRotateRed = m4.multiply(applyRedMat(), matAccum1)
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, matBeforeRotateRed);
 
     gl.uniformMatrix4fv(shProgram.iProjectionMatrix, false, projection);
     gl.colorMask(true, false, false, false);
@@ -204,13 +232,17 @@ function draw() {
     surface.Draw();
     gl.clear(gl.DEPTH_BUFFER_BIT);
     let matAccumBlue = m4.multiply(applyBlueMat(), matAccum1);
-    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(m4.multiply(applyBlueMat(), matAccum1), getRotationMatrix()));
+    // let matBeforeRotateBlue = m4.multiply(m4.multiply(applyBlueMat(), matAccum1), getRotationMatrix())
+    let matBeforeRotateBlue = m4.multiply(applyBlueMat(), matAccum1)
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, matBeforeRotateBlue);
     gl.colorMask(false, true, true, false);
     surface.Draw();
     gl.colorMask(true, true, true, true);
+    gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, m4.multiply(matBeforeRotateBlue, translateSphere));
+    sound_surface.DrawSound();
 }
 
-function redraw(){
+function redraw() {
     draw()
     window.requestAnimationFrame(redraw)
 }
@@ -375,6 +407,7 @@ function initGL() {
 
     surface = new Model('Surface');
     bg_surface = new Model('Background');
+    sound_surface = new Model('Sphere');
     let surfaceData = CreateSurfaceData()
     surface.BufferData(surfaceData[0]);
     let bg_surfaceData = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
@@ -383,6 +416,9 @@ function initGL() {
     surface.TextureBufferData(CreateTextureData());
     let bg_surfaceTextureData = [0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
     bg_surface.TextureBufferData(bg_surfaceTextureData);
+    let sound_surfaceData = CreateSphereSurface(0.1)
+    sound_surface.BufferData(sound_surfaceData)
+    // sound_surface.TextureBufferData(bg_surfaceTextureData);
     gl.enable(gl.DEPTH_TEST);
 }
 
@@ -422,9 +458,17 @@ function createProgram(gl, vShader, fShader) {
 /**
  * initialization function that will be called when the page has loaded
  */
+let song = null;
 function init() {
     userRotAngle = 0.0;
     let canvas;
+    song = document.getElementById('song');
+    initAudio()
+    window.addEventListener('deviceorientation', e => {
+        sensorFusion.z = -e.alpha / 180 * Math.PI;
+        sensorFusion.x = -e.beta / 180 * Math.PI;
+        sensorFusion.y = -e.gamma / 180 * Math.PI;
+    }, true);
 
     video = document.createElement('video');
     video.setAttribute('autoplay', true);
@@ -513,11 +557,7 @@ let sensorFusion = {
   y: 0,
   z: 0
 }
-window.addEventListener('deviceorientation', e => {
-  sensorFusion.z = -e.alpha / 180 * Math.PI;
-  sensorFusion.x = -e.beta / 180 * Math.PI;
-  sensorFusion.y = -e.gamma / 180 * Math.PI;
-}, true);
+
 
 function getRotationMatrix() {
   var _x = sensorFusion.x;
@@ -555,3 +595,91 @@ function getRotationMatrix() {
   ];
 
 };
+
+
+let webAudio;
+let bandpassFilter;
+let manipulator;
+
+function initAudio() {
+    let chek = document.getElementById('check');
+
+
+    song.addEventListener('play', () => {
+        if (!webAudio) {
+            webAudio = new AudioContext();
+            let source = webAudio.createMediaElementSource(song);
+            manipulator = webAudio.createPanner();
+            bandpassFilter = webAudio.createBiquadFilter();
+
+            source.connect(manipulator);
+            manipulator.connect(bandpassFilter);
+            bandpassFilter.connect(webAudio.destination);
+
+            bandpassFilter.type = 'bandpass';
+            bandpassFilter.Q.value = 10;
+            bandpassFilter.detune.value = 3;
+            bandpassFilter.frequency.value = 1550;
+            bandpassFilter.gain.value = 6;
+            webAudio.resume();
+        }
+    })
+    song.addEventListener('pause', () => {
+        console.log('pause');
+        webAudio.resume();
+    })
+
+    chek.addEventListener('change', function () {
+        if (chek.checked) {
+            manipulator.disconnect();
+            manipulator.connect(bandpassFilter);
+            bandpassFilter.connect(webAudio.destination);
+            console.log("checked")
+        } else {
+            manipulator.disconnect();
+            manipulator.connect(webAudio.destination);
+            console.log("unchecked")
+        }
+    });
+    song.play();
+}
+
+function vectorFromAngles(alpha, beta, gamma) {
+    const alphaRad = alpha;
+    const betaRad = beta;
+    const gammaRad = gamma;
+    let vector = [0, -1, 0];
+    const rotX = [
+        [1, 0, 0],
+        [0, Math.cos(alphaRad), -Math.sin(alphaRad)],
+        [0, Math.sin(alphaRad), Math.cos(alphaRad)]
+    ];
+    vector = multiplyMatrixVector(rotX, vector);
+    const rotY = [
+        [Math.cos(betaRad), 0, Math.sin(betaRad)],
+        [0, 1, 0],
+        [-Math.sin(betaRad), 0, Math.cos(betaRad)]
+    ];
+    vector = multiplyMatrixVector(rotY, vector);
+    const rotZ = [
+        [Math.cos(gammaRad), -Math.sin(gammaRad), 0],
+        [Math.sin(gammaRad), Math.cos(gammaRad), 0],
+        [0, 0, 1]
+    ];
+    vector = multiplyMatrixVector(rotZ, vector);
+
+
+    return vector;
+}
+
+function multiplyMatrixVector(matrix, vector) {
+    const result = [];
+    for (let i = 0; i < matrix.length; i++) {
+        let sum = 0;
+        for (let j = 0; j < vector.length; j++) {
+            sum += matrix[i][j] * vector[j];
+        }
+        result.push(sum);
+    }
+    return result;
+}
